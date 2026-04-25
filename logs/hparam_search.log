@@ -1,0 +1,183 @@
+[2026-04-25 13:45:53][hparam_search][INFO] 
+============================================================
+[2026-04-25 13:45:53][hparam_search][INFO] AXIS: optimizer  (4 configs)
+[2026-04-25 13:45:53][hparam_search][INFO] ============================================================
+[2026-04-25 13:45:54][hparam_search][INFO] [AdamW] Training 25 epochs …
+[2026-04-25 13:51:14][hparam_search][INFO]   [AdamW] Done — Dice=0.7920  (316s)
+[2026-04-25 13:51:14][hparam_search][INFO] [Adam] Training 25 epochs …
+[2026-04-25 13:56:37][hparam_search][INFO]   [Adam] Done — Dice=0.7988  (319s)
+[2026-04-25 13:56:37][hparam_search][INFO] [SGD+Nesterov] Training 25 epochs …
+[2026-04-25 14:01:39][hparam_search][INFO]   [SGD+Nesterov] Done — Dice=0.7895  (298s)
+[2026-04-25 14:01:39][hparam_search][INFO] [RMSprop] Training 25 epochs …
+[2026-04-25 14:07:01][hparam_search][INFO]   [RMSprop] Done — Dice=0.7898  (319s)
+[2026-04-25 14:07:02][hparam_search][INFO] Plots saved for axis: optimizer
+[2026-04-25 14:07:05][hparam_search][INFO] 
+============================================================
+[2026-04-25 14:07:05][hparam_search][INFO] AXIS: lr  (5 configs)
+[2026-04-25 14:07:05][hparam_search][INFO] ============================================================
+[2026-04-25 14:07:06][hparam_search][INFO] [LR=1e-2] Training 25 epochs …
+[2026-04-25 14:11:29][hparam_search][INFO]   [LR=1e-2] Done — Dice=0.0000  (260s)
+[2026-04-25 14:11:29][hparam_search][INFO] [LR=5e-3] Training 25 epochs …
+[2026-04-25 14:15:58][hparam_search][INFO]   [LR=5e-3] Done — Dice=0.0000  (266s)
+[2026-04-25 14:15:58][hparam_search][INFO] [LR=1e-3] Training 25 epochs …
+[2026-04-25 14:21:21][hparam_search][INFO]   [LR=1e-3] Done — Dice=0.7931  (319s)
+[2026-04-25 14:21:22][hparam_search][INFO] [LR=5e-4] Training 25 epochs …
+[2026-04-25 14:26:47][hparam_search][INFO]   [LR=5e-4] Done — Dice=0.7955  (322s)
+[2026-04-25 14:26:47][hparam_search][INFO] [LR=1e-4] Training 25 epochs …
+[2026-04-25 14:32:12][hparam_search][INFO]   [LR=1e-4] Done — Dice=0.7965  (322s)
+[2026-04-25 14:32:13][hparam_search][INFO] Plots saved for axis: lr
+[2026-04-25 14:32:16][hparam_search][INFO] 
+============================================================
+[2026-04-25 14:32:16][hparam_search][INFO] AXIS: batch_size  (3 configs)
+[2026-04-25 14:32:16][hparam_search][INFO] ============================================================
+[2026-04-25 14:32:17][hparam_search][INFO] [Batch=16] Training 25 epochs …
+[2026-04-25 14:39:21][hparam_search][INFO]   [Batch=16] Done — Dice=0.8031  (421s)
+[2026-04-25 14:39:22][hparam_search][INFO] [Batch=32] Training 25 epochs …
+[2026-04-25 14:44:47][hparam_search][INFO]   [Batch=32] Done — Dice=0.7935  (322s)
+[2026-04-25 14:44:47][hparam_search][INFO] [Batch=64] Training 25 epochs …
+[2026-04-25 14:49:35][hparam_search][INFO]   [Batch=64] Done — Dice=0.7879  (284s)
+[2026-04-25 14:49:36][hparam_search][INFO] Plots saved for axis: batch_size
+[2026-04-25 14:49:39][hparam_search][INFO] 
+============================================================
+[2026-04-25 14:49:39][hparam_search][INFO] AXIS: loss  (2 configs)
+[2026-04-25 14:49:39][hparam_search][INFO] ============================================================
+[2026-04-25 14:49:40][hparam_search][INFO] [BCE+Dice] Training 25 epochs …
+[2026-04-25 14:55:05][hparam_search][INFO]   [BCE+Dice] Done — Dice=0.7987  (322s)
+[2026-04-25 14:55:05][hparam_search][INFO] [Focal+Dice] Training 25 epochs …
+[2026-04-25 15:00:31][hparam_search][INFO]   [Focal+Dice] Done — Dice=0.7923  (322s)
+[2026-04-25 15:00:32][hparam_search][INFO] Plots saved for axis: loss
+[2026-04-25 15:00:34][hparam_search][INFO] 
+============================================================
+[2026-04-25 15:00:34][hparam_search][INFO] AXIS: preprocessing  (4 configs)
+[2026-04-25 15:00:34][hparam_search][INFO] ============================================================
+[2026-04-25 15:00:35][hparam_search][INFO] [CLAHE clip=2 (default)] Training 25 epochs …
+[2026-04-25 15:06:00][hparam_search][INFO]   [CLAHE clip=2 (default)] Done — Dice=0.7950  (322s)
+[2026-04-25 15:06:01][hparam_search][INFO] [No CLAHE] Training 25 epochs …
+[2026-04-25 15:11:26][hparam_search][INFO]   [No CLAHE] Done — Dice=0.7970  (322s)
+[2026-04-25 15:11:26][hparam_search][INFO] [CLAHE clip=1 (mild)] Training 25 epochs …
+[2026-04-25 15:16:51][hparam_search][INFO]   [CLAHE clip=1 (mild)] Done — Dice=0.7952  (322s)
+[2026-04-25 15:16:52][hparam_search][INFO] [CLAHE clip=4 (strong)] Training 25 epochs …
+[2026-04-25 15:22:17][hparam_search][INFO]   [CLAHE clip=4 (strong)] Done — Dice=0.8044  (322s)
+[2026-04-25 15:22:19][hparam_search][INFO] Plots saved for axis: preprocessing
+[2026-04-25 15:22:21][hparam_search][INFO] 
+============================================================
+[2026-04-25 15:22:21][hparam_search][INFO] AXIS: augmentation  (4 configs)
+[2026-04-25 15:22:21][hparam_search][INFO] ============================================================
+[2026-04-25 15:22:22][hparam_search][INFO] [No augmentation] Training 25 epochs …
+[2026-04-25 15:27:47][hparam_search][INFO]   [No augmentation] Done — Dice=0.7934  (321s)
+[2026-04-25 15:27:48][hparam_search][INFO] [Light aug] Training 25 epochs …
+[2026-04-25 15:33:12][hparam_search][INFO]   [Light aug] Done — Dice=0.7964  (321s)
+[2026-04-25 15:33:13][hparam_search][INFO] [Medium aug] Training 25 epochs …
+[2026-04-25 15:38:39][hparam_search][INFO]   [Medium aug] Done — Dice=0.7932  (322s)
+[2026-04-25 15:38:39][hparam_search][INFO] [Heavy aug] Training 25 epochs …
+[2026-04-25 15:44:05][hparam_search][INFO]   [Heavy aug] Done — Dice=0.7904  (323s)
+[2026-04-25 15:44:06][hparam_search][INFO] Plots saved for axis: augmentation
+[2026-04-25 15:44:09][hparam_search][INFO] 
+============================================================
+[2026-04-25 15:44:09][hparam_search][INFO] AXIS: patch_size  (3 configs)
+[2026-04-25 15:44:09][hparam_search][INFO] ============================================================
+[2026-04-25 15:44:10][hparam_search][INFO] [Patch=48] Training 25 epochs …
+[2026-04-25 15:48:01][hparam_search][INFO]   [Patch=48] Done — Dice=0.7907  (229s)
+[2026-04-25 15:48:01][hparam_search][INFO] [Patch=64] Training 25 epochs …
+[2026-04-25 15:53:28][hparam_search][INFO]   [Patch=64] Done — Dice=0.7924  (323s)
+[2026-04-25 15:53:28][hparam_search][INFO] [Patch=96] Training 25 epochs …
+[2026-04-25 16:03:41][hparam_search][INFO]   [Patch=96] Done — Dice=0.7953  (606s)
+[2026-04-25 16:03:42][hparam_search][INFO] Plots saved for axis: patch_size
+[2026-04-25 17:55:37][hparam_search][INFO] Device: cuda
+[2026-04-25 17:55:37][hparam_search][INFO] Quick epochs per config: 25
+[2026-04-25 17:55:37][hparam_search][INFO] 
+============================================================
+[2026-04-25 17:55:37][hparam_search][INFO] AXIS: optimizer  (4 configs)
+[2026-04-25 17:55:37][hparam_search][INFO] ============================================================
+[2026-04-25 17:55:38][hparam_search][INFO] [AdamW] Training 25 epochs …
+[2026-04-25 18:01:02][hparam_search][INFO]   [AdamW] Done — Dice=0.7973  (320s)
+[2026-04-25 18:01:02][hparam_search][INFO] [Adam] Training 25 epochs …
+[2026-04-25 18:06:29][hparam_search][INFO]   [Adam] Done — Dice=0.7982  (323s)
+[2026-04-25 18:06:29][hparam_search][INFO] [SGD+Nesterov] Training 25 epochs …
+[2026-04-25 18:11:34][hparam_search][INFO]   [SGD+Nesterov] Done — Dice=0.7886  (302s)
+[2026-04-25 18:11:34][hparam_search][INFO] [RMSprop] Training 25 epochs …
+[2026-04-25 18:17:02][hparam_search][INFO]   [RMSprop] Done — Dice=0.7922  (325s)
+[2026-04-25 18:17:04][hparam_search][INFO] Plots saved for axis: optimizer
+[2026-04-25 18:17:04][hparam_search][INFO] 
+============================================================
+[2026-04-25 18:17:04][hparam_search][INFO] AXIS: lr  (5 configs)
+[2026-04-25 18:17:04][hparam_search][INFO] ============================================================
+[2026-04-25 18:17:04][hparam_search][INFO] [LR=1e-2] Training 25 epochs …
+[2026-04-25 18:21:33][hparam_search][INFO]   [LR=1e-2] Done — Dice=0.0000  (266s)
+[2026-04-25 18:21:34][hparam_search][INFO] [LR=5e-3] Training 25 epochs …
+[2026-04-25 18:26:16][hparam_search][INFO]   [LR=5e-3] Done — Dice=0.7856  (279s)
+[2026-04-25 18:26:16][hparam_search][INFO] [LR=1e-3] Training 25 epochs …
+[2026-04-25 18:31:41][hparam_search][INFO]   [LR=1e-3] Done — Dice=0.7968  (321s)
+[2026-04-25 18:31:41][hparam_search][INFO] [LR=5e-4] Training 25 epochs …
+[2026-04-25 18:37:07][hparam_search][INFO]   [LR=5e-4] Done — Dice=0.7951  (322s)
+[2026-04-25 18:37:07][hparam_search][INFO] [LR=1e-4] Training 25 epochs …
+[2026-04-25 18:42:33][hparam_search][INFO]   [LR=1e-4] Done — Dice=0.7898  (322s)
+[2026-04-25 18:42:34][hparam_search][INFO] Plots saved for axis: lr
+[2026-04-25 18:42:34][hparam_search][INFO] 
+============================================================
+[2026-04-25 18:42:34][hparam_search][INFO] AXIS: batch_size  (3 configs)
+[2026-04-25 18:42:34][hparam_search][INFO] ============================================================
+[2026-04-25 18:42:34][hparam_search][INFO] [Batch=16] Training 25 epochs …
+[2026-04-25 18:49:39][hparam_search][INFO]   [Batch=16] Done — Dice=0.8001  (422s)
+[2026-04-25 18:49:40][hparam_search][INFO] [Batch=32] Training 25 epochs …
+[2026-04-25 18:55:05][hparam_search][INFO]   [Batch=32] Done — Dice=0.8011  (322s)
+[2026-04-25 18:55:06][hparam_search][INFO] [Batch=64] Training 25 epochs …
+[2026-04-25 18:59:54][hparam_search][INFO]   [Batch=64] Done — Dice=0.7962  (285s)
+[2026-04-25 18:59:55][hparam_search][INFO] Plots saved for axis: batch_size
+[2026-04-25 18:59:55][hparam_search][INFO] 
+============================================================
+[2026-04-25 18:59:55][hparam_search][INFO] AXIS: loss  (2 configs)
+[2026-04-25 18:59:55][hparam_search][INFO] ============================================================
+[2026-04-25 18:59:55][hparam_search][INFO] [BCE+Dice] Training 25 epochs …
+[2026-04-25 19:05:22][hparam_search][INFO]   [BCE+Dice] Done — Dice=0.7928  (323s)
+[2026-04-25 19:05:22][hparam_search][INFO] [Focal+Dice] Training 25 epochs …
+[2026-04-25 19:10:49][hparam_search][INFO]   [Focal+Dice] Done — Dice=0.7970  (323s)
+[2026-04-25 19:10:50][hparam_search][INFO] Plots saved for axis: loss
+[2026-04-25 19:10:50][hparam_search][INFO] 
+============================================================
+[2026-04-25 19:10:50][hparam_search][INFO] AXIS: preprocessing  (4 configs)
+[2026-04-25 19:10:50][hparam_search][INFO] ============================================================
+[2026-04-25 19:10:50][hparam_search][INFO] [CLAHE clip=2 (default)] Training 25 epochs …
+[2026-04-25 19:16:17][hparam_search][INFO]   [CLAHE clip=2 (default)] Done — Dice=0.8013  (323s)
+[2026-04-25 19:16:17][hparam_search][INFO] [No CLAHE] Training 25 epochs …
+[2026-04-25 19:21:44][hparam_search][INFO]   [No CLAHE] Done — Dice=0.7938  (323s)
+[2026-04-25 19:21:44][hparam_search][INFO] [CLAHE clip=1 (mild)] Training 25 epochs …
+[2026-04-25 19:27:11][hparam_search][INFO]   [CLAHE clip=1 (mild)] Done — Dice=0.7915  (323s)
+[2026-04-25 19:27:11][hparam_search][INFO] [CLAHE clip=4 (strong)] Training 25 epochs …
+[2026-04-25 19:32:37][hparam_search][INFO]   [CLAHE clip=4 (strong)] Done — Dice=0.7948  (323s)
+[2026-04-25 19:32:39][hparam_search][INFO] Plots saved for axis: preprocessing
+[2026-04-25 19:32:39][hparam_search][INFO] 
+============================================================
+[2026-04-25 19:32:39][hparam_search][INFO] AXIS: augmentation  (4 configs)
+[2026-04-25 19:32:39][hparam_search][INFO] ============================================================
+[2026-04-25 19:32:39][hparam_search][INFO] [No augmentation] Training 25 epochs …
+[2026-04-25 19:38:04][hparam_search][INFO]   [No augmentation] Done — Dice=0.7934  (322s)
+[2026-04-25 19:38:05][hparam_search][INFO] [Light aug] Training 25 epochs …
+[2026-04-25 19:43:30][hparam_search][INFO]   [Light aug] Done — Dice=0.7956  (322s)
+[2026-04-25 19:43:31][hparam_search][INFO] [Medium aug] Training 25 epochs …
+[2026-04-25 19:48:57][hparam_search][INFO]   [Medium aug] Done — Dice=0.7947  (323s)
+[2026-04-25 19:48:57][hparam_search][INFO] [Heavy aug] Training 25 epochs …
+[2026-04-25 19:54:24][hparam_search][INFO]   [Heavy aug] Done — Dice=0.8000  (324s)
+[2026-04-25 19:54:25][hparam_search][INFO] Plots saved for axis: augmentation
+[2026-04-25 19:54:25][hparam_search][INFO] 
+============================================================
+[2026-04-25 19:54:25][hparam_search][INFO] AXIS: patch_size  (3 configs)
+[2026-04-25 19:54:25][hparam_search][INFO] ============================================================
+[2026-04-25 19:54:26][hparam_search][INFO] [Patch=48] Training 25 epochs …
+[2026-04-25 19:58:17][hparam_search][INFO]   [Patch=48] Done — Dice=0.7932  (229s)
+[2026-04-25 19:58:17][hparam_search][INFO] [Patch=64] Training 25 epochs …
+[2026-04-25 20:03:44][hparam_search][INFO]   [Patch=64] Done — Dice=0.8028  (323s)
+[2026-04-25 20:03:44][hparam_search][INFO] [Patch=96] Training 25 epochs …
+[2026-04-25 20:13:57][hparam_search][INFO]   [Patch=96] Done — Dice=0.7971  (606s)
+[2026-04-25 20:13:58][hparam_search][INFO] Plots saved for axis: patch_size
+[2026-04-25 20:13:58][hparam_search][INFO] Summary heatmap saved.
+[2026-04-25 20:13:58][hparam_search][INFO] 
+=== HYPERPARAMETER SEARCH COMPLETE ===
+[2026-04-25 20:13:58][hparam_search][INFO] Results saved to: /home/emirhan/FAC/Sorbonne/M1/S2/Projet IMA/test/drive_unet_project(2)/drive_unet/outputs/hparam_search
+[2026-04-25 20:13:58][hparam_search][INFO]   optimizer           : best=Adam  Dice=0.7982
+[2026-04-25 20:13:58][hparam_search][INFO]   lr                  : best=LR=1e-4  Dice=0.7890
+[2026-04-25 20:13:58][hparam_search][INFO]   batch_size          : best=Batch=64  Dice=0.7962
+[2026-04-25 20:13:58][hparam_search][INFO]   loss                : best=BCE+Dice  Dice=0.7887
+[2026-04-25 20:13:58][hparam_search][INFO]   preprocessing       : best=CLAHE clip=4 (strong)  Dice=0.7884
+[2026-04-25 20:13:58][hparam_search][INFO]   augmentation        : best=Light aug  Dice=0.7956
+[2026-04-25 20:13:58][hparam_search][INFO]   patch_size          : best=Patch=96  Dice=0.7896

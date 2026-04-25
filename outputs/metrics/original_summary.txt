@@ -1,0 +1,24 @@
+Experiment: original
+Threshold : 0.79
+
+  dice_mean                     : 0.8022
+  dice_std                      : 0.0120
+  iou_mean                      : 0.6698
+  iou_std                       : 0.0169
+  accuracy_mean                 : 0.9504
+  accuracy_std                  : 0.0037
+  sensitivity_mean              : 0.8254
+  sensitivity_std               : 0.0340
+  specificity_mean              : 0.9680
+  specificity_std               : 0.0072
+  precision_mean                : 0.7832
+  precision_std                 : 0.0407
+  f1_mean                       : 0.8022
+  f1_std                        : 0.0120
+  auc_roc_mean                  : 0.9737
+  auc_roc_std                   : 0.0029
+  auc_pr_mean                   : 0.8876
+  auc_pr_std                    : 0.0124
+  best_threshold                : 0.7900
+  auc_roc_global                : 0.9727
+  auc_pr_global                 : 0.8848

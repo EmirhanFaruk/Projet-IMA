@@ -1,0 +1,24 @@
+Experiment: deva
+Threshold : 0.77
+
+  dice_mean                     : 0.8021
+  dice_std                      : 0.0135
+  iou_mean                      : 0.6698
+  iou_std                       : 0.0191
+  accuracy_mean                 : 0.9510
+  accuracy_std                  : 0.0037
+  sensitivity_mean              : 0.8165
+  sensitivity_std               : 0.0302
+  specificity_mean              : 0.9698
+  specificity_std               : 0.0069
+  precision_mean                : 0.7910
+  precision_std                 : 0.0409
+  f1_mean                       : 0.8021
+  f1_std                        : 0.0135
+  auc_roc_mean                  : 0.9710
+  auc_roc_std                   : 0.0032
+  auc_pr_mean                   : 0.8840
+  auc_pr_std                    : 0.0124
+  best_threshold                : 0.7700
+  auc_roc_global                : 0.9701
+  auc_pr_global                 : 0.8817

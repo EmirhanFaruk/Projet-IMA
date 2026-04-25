@@ -1,0 +1,24 @@
+Experiment: msca
+Threshold : 0.78
+
+  dice_mean                     : 0.8055
+  dice_std                      : 0.0126
+  iou_mean                      : 0.6745
+  iou_std                       : 0.0178
+  accuracy_mean                 : 0.9525
+  accuracy_std                  : 0.0036
+  sensitivity_mean              : 0.8091
+  sensitivity_std               : 0.0340
+  specificity_mean              : 0.9726
+  specificity_std               : 0.0064
+  precision_mean                : 0.8048
+  precision_std                 : 0.0389
+  f1_mean                       : 0.8055
+  f1_std                        : 0.0126
+  auc_roc_mean                  : 0.9741
+  auc_roc_std                   : 0.0037
+  auc_pr_mean                   : 0.8895
+  auc_pr_std                    : 0.0139
+  best_threshold                : 0.7800
+  auc_roc_global                : 0.9732
+  auc_pr_global                 : 0.8871

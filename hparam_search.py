@@ -1,552 +1,335 @@
 """
-hparam_search.py — Systematic hyperparameter search with full visualisation.
+hparam_search.py — Hyperparameter sensitivity study with full visualisation.
 
-Tests the following axes (each in isolation, one at a time):
-  1. Optimizer         : adamw | adam | sgd | rmsprop
-  2. Learning rate     : 1e-2 | 5e-3 | 1e-3 | 5e-4 | 1e-4
-  3. Batch size        : 16 | 32 | 64
-  4. Loss function     : bce_dice | focal_dice
-  5. Preprocessing     : clahe | no_clahe | clahe_clip1 | clahe_clip4
-  6. Augmentation level: none | light | medium | heavy
-  7. Patch size        : 48 | 64 | 96
+For each of 7 axes (optimizer, lr, batch_size, loss, preprocessing,
+augmentation, patch_size), train each candidate config and produce:
 
-Each configuration trains for HPARAM_QUICK_EPOCHS epochs (default 25).
-All metrics logged and saved. Full comparison plots generated per axis.
+  1. <axis>_results.json — per-config metrics
+  2. <axis>_metrics_bar.png — 6-panel bar charts (Dice, IoU, Sens, Spec, Prec, AUC)
+  3. <axis>_training_curves.png — training curves overlay
+  4. hparam_summary_heatmap.png — final summary heatmap across all axes
+  5. hparam_radar.png — radar chart of best config per axis
+
+Each config is trained for HPARAM_FULL_EPOCHS (200 by default) on a single
+fold/seed so the search runs in reasonable time.
 
 Usage:
-    python hparam_search.py                      # run all axes
-    python hparam_search.py --axis optimizer     # single axis
-    python hparam_search.py --axis lr
-    python hparam_search.py --axis batch_size
-    python hparam_search.py --axis loss
-    python hparam_search.py --axis preprocessing
-    python hparam_search.py --axis augmentation
-    python hparam_search.py --axis patch_size
-    python hparam_search.py --plot_only          # just regenerate plots
+  python hparam_search.py --axes optimizer       # one axis
+  python hparam_search.py --axes optimizer lr   # multiple
+  python hparam_search.py                        # all 7 axes
 """
 
 import sys
-import json
-import argparse
-import copy
-import time
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
-sys.path.insert(0, str(Path(__file__).parent / "src"))
-
+import argparse
+import json
+import os
+import subprocess
+import time
 import numpy as np
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader
-from torch.cuda.amp import GradScaler, autocast
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-from tqdm import tqdm
+import seaborn as sns
 
 import config as C
-from src.utils import (set_seed, ensure_dirs, get_logger, MetricHistory, Timer)
-from src.model import build_model
-from src.losses import build_loss
-from src.metrics import compute_metrics, MetricAccumulator
-from src.optimizers import build_optimizer, build_scheduler
-from src.infer import infer_full_image
-from src.dataset import DRIVEFullImageDataset
+from utils import get_logger, ensure_dirs
 
 logger = get_logger("hparam_search", C.LOG_DIR / "hparam_search.log")
 
-# ─────────────────────────── Search grid definition ───────────────────────────
 
-SEARCH_GRID = {
+HPARAM_AXES = {
     "optimizer": [
-        {"name": "AdamW",   "optimizer": "adamw",   "lr": 1e-3},
-        {"name": "Adam",    "optimizer": "adam",    "lr": 1e-3},
-        {"name": "SGD+Nesterov", "optimizer": "sgd", "lr": 1e-2},
-        {"name": "RMSprop", "optimizer": "rmsprop", "lr": 5e-4},
+        {"name": "AdamW",        "OPTIMIZER": "adamw",   "LR": 1e-4},
+        {"name": "Adam",         "OPTIMIZER": "adam",    "LR": 1e-4},
+        {"name": "SGD+Nesterov", "OPTIMIZER": "sgd",     "LR": 1e-2},
+        {"name": "RMSprop",      "OPTIMIZER": "rmsprop", "LR": 5e-4},
     ],
     "lr": [
-        {"name": "LR=1e-2",  "lr": 1e-2},
-        {"name": "LR=5e-3",  "lr": 5e-3},
-        {"name": "LR=1e-3",  "lr": 1e-3},
-        {"name": "LR=5e-4",  "lr": 5e-4},
-        {"name": "LR=1e-4",  "lr": 1e-4},
+        {"name": "LR=1e-2", "LR": 1e-2},
+        {"name": "LR=5e-3", "LR": 5e-3},
+        {"name": "LR=1e-3", "LR": 1e-3},
+        {"name": "LR=5e-4", "LR": 5e-4},
+        {"name": "LR=1e-4", "LR": 1e-4},
     ],
     "batch_size": [
-        {"name": "Batch=16", "batch_size": 16},
-        {"name": "Batch=32", "batch_size": 32},
-        {"name": "Batch=64", "batch_size": 64},
+        {"name": "Batch=16", "BATCH_SIZE": 16},
+        {"name": "Batch=32", "BATCH_SIZE": 32},
+        {"name": "Batch=64", "BATCH_SIZE": 64},
     ],
     "loss": [
-        {"name": "BCE+Dice",   "loss_fn": "bce_dice"},
-        {"name": "Focal+Dice", "loss_fn": "focal_dice"},
+        {"name": "BCE+Dice",   "LOSS_FN": "bce_dice"},
+        {"name": "Focal+Dice", "LOSS_FN": "focal_dice"},
     ],
     "preprocessing": [
-        {"name": "CLAHE clip=2 (default)", "use_clahe": True,  "clahe_clip": 2.0},
-        {"name": "No CLAHE",               "use_clahe": False, "clahe_clip": 2.0},
-        {"name": "CLAHE clip=1 (mild)",    "use_clahe": True,  "clahe_clip": 1.0},
-        {"name": "CLAHE clip=4 (strong)",  "use_clahe": True,  "clahe_clip": 4.0},
+        {"name": "No CLAHE",    "USE_CLAHE": False},
+        {"name": "CLAHE clip=1", "USE_CLAHE": True, "CLAHE_CLIP_LIMIT": 1.0},
+        {"name": "CLAHE clip=2", "USE_CLAHE": True, "CLAHE_CLIP_LIMIT": 2.0},
+        {"name": "CLAHE clip=4", "USE_CLAHE": True, "CLAHE_CLIP_LIMIT": 4.0},
     ],
     "augmentation": [
-        {"name": "No augmentation", "aug_level": "none"},
-        {"name": "Light aug",       "aug_level": "light"},
-        {"name": "Medium aug",      "aug_level": "medium"},
-        {"name": "Heavy aug",       "aug_level": "heavy"},
+        {"name": "No aug", "AUG_LEVEL": "none"},
+        {"name": "Light",  "AUG_LEVEL": "light"},
+        {"name": "Medium", "AUG_LEVEL": "medium"},
+        {"name": "Heavy",  "AUG_LEVEL": "heavy"},
     ],
     "patch_size": [
-        {"name": "Patch=48", "patch_size": 48},
-        {"name": "Patch=64", "patch_size": 64},
-        {"name": "Patch=96", "patch_size": 96},
+        {"name": "Patch=48", "PATCH_SIZE": 48},
+        {"name": "Patch=64", "PATCH_SIZE": 64},
+        {"name": "Patch=96", "PATCH_SIZE": 96},
     ],
 }
 
-METRICS_TO_PLOT = [
-    "val_dice", "val_iou", "val_sensitivity",
-    "val_specificity", "val_auc_roc", "val_precision"
-]
 
-METRIC_LABELS = {
-    "val_dice":        "Dice",
-    "val_iou":         "IoU",
-    "val_sensitivity": "Sensitivity",
-    "val_specificity": "Specificity",
-    "val_auc_roc":     "AUC-ROC",
-    "val_precision":   "Precision",
-}
+# ─────────────────────────── Run helpers ─────────────────────────────────
 
+def _run_one_config(axis: str, cfg: dict, epochs: int, fold: int, seed: int):
+    """Train + evaluate a single hparam config. Returns the summary dict."""
+    name = cfg["name"]
+    tag  = f"hparam_{axis}_{name.replace(' ', '_').replace('=', '').replace('+','plus')}"
 
-# ─────────────────────────── Per-config training ──────────────────────────────
+    overrides = {k: v for k, v in cfg.items() if k != "name"}
+    env = os.environ.copy()
+    for k, v in overrides.items():
+        env[f"OVERRIDE_{k}"] = str(v)
 
-def _apply_cfg_to_module(cfg: dict):
-    """Temporarily patch config module with values from a search config."""
-    C.OPTIMIZER  = cfg.get("optimizer",   C.OPTIMIZER)
-    C.LR         = cfg.get("lr",          C.LR)
-    C.BATCH_SIZE = cfg.get("batch_size",  C.BATCH_SIZE)
-    C.LOSS_FN    = cfg.get("loss_fn",     C.LOSS_FN)
-    C.AUG_LEVEL  = cfg.get("aug_level",   C.AUG_LEVEL)
-    C.PATCH_SIZE = cfg.get("patch_size",  C.PATCH_SIZE)
-    if "use_clahe" in cfg:
-        C.USE_CLAHE        = cfg["use_clahe"]
-        C.CLAHE_CLIP_LIMIT = cfg.get("clahe_clip", C.CLAHE_CLIP_LIMIT)
+    # Determine summary path BEFORE running
+    sub = f"fold{fold}_seed{seed}_{tag}"
+    summary_path = C.METRIC_DIR / "original" / sub / "summary.json"
 
+    if summary_path.exists():
+        logger.info(f"  [skip] {axis}/{name} — already done")
+        with open(summary_path) as f:
+            return json.load(f)
 
-def _reset_config():
-    """Reset config to safe defaults after each run."""
-    C.OPTIMIZER        = "adamw"
-    C.LR               = 1e-3
-    C.BATCH_SIZE       = 32
-    C.LOSS_FN          = "bce_dice"
-    C.AUG_LEVEL        = "medium"
-    C.PATCH_SIZE       = 64
-    C.USE_CLAHE        = True
-    C.CLAHE_CLIP_LIMIT = 2.0
-
-
-@torch.no_grad()
-def _validate(model, device, threshold=0.5):
-    """Full-image validation on val split. Returns dict of mean metrics."""
-    ds  = DRIVEFullImageDataset("val")
-    acc = MetricAccumulator()
-    model.eval()
-    for img_t, msk_t, fov_t, stem in ds:
-        image = img_t.squeeze(0).numpy()
-        gt    = msk_t.squeeze(0).numpy()
-        fov   = fov_t.squeeze(0).numpy()
-        prob  = infer_full_image(model, image, fov, device,
-                                 patch_sz=C.PATCH_SIZE, stride=C.TEST_STRIDE)
-        m = compute_metrics(prob, gt, fov, threshold)
-        acc.update(**{k: v for k, v in m.items()
-                      if k not in ("tp","fp","tn","fn")})
-    return acc.mean()
-
-
-def run_one_config(cfg: dict,
-                   run_name: str,
-                   device: torch.device,
-                   experiment: str = "original") -> dict:
-    """
-    Train a model for HPARAM_QUICK_EPOCHS with the given config.
-    Returns dict of per-epoch history + final val metrics.
-    """
-    set_seed(C.SEED)
-    _apply_cfg_to_module(cfg)
-
-    # ── Rebuild dataset with current config settings ─────────────────────
-    # Import AFTER patching config so patch_size / aug_level take effect
-    from src.dataset import DRIVEPatchDataset
-    from src.dataset import get_train_transform
-
-    # Patch augmentation transform into dataset module
-    import src.dataset as ds_mod
-    ds_mod._CURRENT_AUG_LEVEL = C.AUG_LEVEL
-
-    train_ds = DRIVEPatchDataset("train")
-    if len(train_ds) == 0:
-        logger.error(f"[{run_name}] Empty training dataset — skipping")
-        _reset_config()
-        return {}
-
-    train_ld = DataLoader(train_ds, batch_size=C.BATCH_SIZE, shuffle=True,
-                          num_workers=C.NUM_WORKERS, pin_memory=C.PIN_MEMORY,
-                          drop_last=True)
-
-    # ── Model / optimizer / loss ──────────────────────────────────────────
-    model    = build_model(experiment).to(device)
-    crit     = build_loss(C.LOSS_FN)
-    opt      = build_optimizer(model, name=C.OPTIMIZER, lr=C.LR)
-    sched    = build_scheduler(opt)
-    scaler   = GradScaler()
-
-    history  = {m: [] for m in METRICS_TO_PLOT}
-    history["train_loss"] = []
-    history["val_loss"]   = []
-    history["lr"]         = []
-
-    best_dice   = 0.0
-    no_improve  = 0
-    epochs      = C.HPARAM_QUICK_EPOCHS
-    patience    = C.HPARAM_PATIENCE
-
-    logger.info(f"[{run_name}] Training {epochs} epochs …")
-    t0 = time.time()
-
-    for epoch in range(1, epochs + 1):
-        # ── Train ─────────────────────────────────────────────────────────
-        model.train()
-        epoch_loss = 0.0
-        for imgs, masks, fovs in train_ld:
-            imgs, masks = imgs.to(device), masks.to(device)
-            opt.zero_grad()
-            with autocast():
-                loss = crit(model(imgs), masks)
-            scaler.scale(loss).backward()
-            scaler.unscale_(opt)
-            nn.utils.clip_grad_norm_(model.parameters(), C.GRAD_CLIP)
-            scaler.step(opt); scaler.update()
-            epoch_loss += loss.item()
-        train_loss = epoch_loss / len(train_ld)
-
-        # ── Validate patch-level loss ──────────────────────────────────────
-        model.eval()
-        val_loss = 0.0
-        with torch.no_grad():
-            for imgs, masks, fovs in train_ld:   # quick proxy: use 1 pass
-                imgs, masks = imgs.to(device), masks.to(device)
-                with autocast():
-                    val_loss += crit(model(imgs), masks).item()
-                break   # just one batch for speed
-        sched.step(val_loss)
-
-        # ── Full-image validation (every 5 epochs for speed) ──────────────
-        if epoch % 5 == 0 or epoch == epochs:
-            vm = _validate(model, device)
-            for k in METRICS_TO_PLOT:
-                history[k].append(vm.get(k.replace("val_", ""), 0.0))
-            cur_dice = vm.get("dice", 0.0)
-            if cur_dice > best_dice:
-                best_dice = cur_dice; no_improve = 0
-            else:
-                no_improve += 1
-        else:
-            for k in METRICS_TO_PLOT:
-                history[k].append(history[k][-1] if history[k] else 0.0)
-
-        history["train_loss"].append(train_loss)
-        history["val_loss"].append(val_loss)
-        history["lr"].append(opt.param_groups[0]["lr"])
-
-        if no_improve >= patience:
-            logger.info(f"  [{run_name}] Early stop at epoch {epoch}")
-            break
-
-    elapsed = time.time() - t0
-
-    # Final metrics
-    final = _validate(model, device)
-    final["train_time_s"] = elapsed
-    final["best_dice"]    = best_dice
-    final["config"]       = cfg
-    final["name"]         = run_name
-    final["history"]      = history
-
-    logger.info(f"  [{run_name}] Done — Dice={best_dice:.4f}  ({elapsed:.0f}s)")
-    _reset_config()
-    return final
-
-
-# ─────────────────────────── Visualisation ────────────────────────────────────
-
-COLORS = ["#378ADD", "#1D9E75", "#D85A30", "#D4537E",
-          "#639922", "#BA7517", "#7F77DD", "#888780"]
-
-
-def _savefig(fig, path, dpi=150):
-    ensure_dirs(path.parent)
-    fig.savefig(path, dpi=dpi, bbox_inches="tight")
-    plt.close(fig)
-
-
-def plot_axis_curves(results: list[dict], axis_name: str, out_dir: Path):
-    """Training curves for each config in an axis."""
-    n = len(results)
-    if n == 0:
-        return
-
-    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
-    fig.suptitle(f"Training curves — axis: {axis_name}", fontsize=14, fontweight="bold")
-    axes = axes.flatten()
-
-    curve_keys = ["train_loss", "val_dice", "val_iou",
-                  "val_auc_roc", "val_sensitivity", "lr"]
-    curve_labels = ["Train Loss", "Val Dice", "Val IoU",
-                    "Val AUC-ROC", "Val Sensitivity", "LR"]
-
-    for ax, key, label in zip(axes, curve_keys, curve_labels):
-        for i, r in enumerate(results):
-            if not r or "history" not in r:
-                continue
-            h = r["history"]
-            if key not in h or not h[key]:
-                continue
-            epochs = list(range(1, len(h[key]) + 1))
-            ax.plot(epochs, h[key], label=r["name"],
-                    color=COLORS[i % len(COLORS)], linewidth=1.8)
-        ax.set_title(label, fontsize=11)
-        ax.set_xlabel("Epoch")
-        ax.legend(fontsize=7)
-        ax.grid(True, alpha=0.3)
-        if key == "lr":
-            ax.set_yscale("log")
-
-    plt.tight_layout()
-    _savefig(fig, out_dir / f"{axis_name}_training_curves.png")
-
-
-def plot_axis_bar(results: list[dict], axis_name: str, out_dir: Path):
-    """Final metric bar chart for all configs in an axis."""
-    valid = [r for r in results if r and "dice" in r]
-    if not valid:
-        return
-
-    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
-    fig.suptitle(f"Final metrics — axis: {axis_name}", fontsize=14, fontweight="bold")
-    axes = axes.flatten()
-
-    metric_pairs = [
-        ("dice",        "Dice"),
-        ("iou",         "IoU"),
-        ("sensitivity", "Sensitivity"),
-        ("specificity", "Specificity"),
-        ("auc_roc",     "AUC-ROC"),
-        ("precision",   "Precision"),
+    # Train
+    cmd_train = [
+        sys.executable, "src/train.py",
+        "--experiment", "original",
+        "--fold",       str(fold),
+        "--seed",       str(seed),
+        "--epochs",     str(epochs),
+        "--tag",        tag,
     ]
+    logger.info(f"  Training: {axis}/{name} (overrides: {overrides})")
+    subprocess.run(cmd_train, env=env, check=False)
 
-    names = [r["name"] for r in valid]
-    x = np.arange(len(valid))
+    # Evaluate
+    cmd_eval = [
+        sys.executable, "src/evaluate.py",
+        "--experiment", "original",
+        "--fold",       str(fold),
+        "--seed",       str(seed),
+        "--tag",        tag,
+        "--tta",
+    ]
+    logger.info(f"  Evaluating: {axis}/{name}")
+    subprocess.run(cmd_eval, env=env, check=False)
 
-    for ax, (key, label) in zip(axes, metric_pairs):
-        vals = [r.get(key, 0.0) for r in valid]
-        bars = ax.bar(x, vals, color=COLORS[:len(valid)],
-                      edgecolor="black", linewidth=0.5)
-        for bar, v in zip(bars, vals):
-            ax.text(bar.get_x() + bar.get_width() / 2,
-                    bar.get_height() + 0.002, f"{v:.4f}",
-                    ha="center", va="bottom", fontsize=8)
-        ax.set_xticks(x)
-        ax.set_xticklabels(names, rotation=20, ha="right", fontsize=8)
-        ax.set_title(label, fontsize=11)
-        lo = max(0, min(vals) - 0.03)
-        hi = min(1.0, max(vals) + 0.03)
-        ax.set_ylim(lo, hi)
-        ax.grid(True, axis="y", alpha=0.3)
-
-        # Highlight best
-        best_idx = int(np.argmax(vals))
-        axes[list(axes).index(ax)].get_children()[best_idx].set_edgecolor("gold")
-        axes[list(axes).index(ax)].get_children()[best_idx].set_linewidth(2.5)
-
-    plt.tight_layout()
-    _savefig(fig, out_dir / f"{axis_name}_metrics_bar.png")
+    # Load summary
+    if summary_path.exists():
+        with open(summary_path) as f:
+            return json.load(f)
+    return None
 
 
-def plot_radar(results: list[dict], axis_name: str, out_dir: Path):
-    """Radar chart comparing all configs across 6 metrics."""
-    valid = [r for r in results if r and "dice" in r]
-    if len(valid) < 2:
-        return
+# ─────────────────────────── Per-axis runner ─────────────────────────────
 
-    metrics = ["dice", "iou", "sensitivity", "specificity", "auc_roc", "precision"]
-    labels  = ["Dice", "IoU", "Sens", "Spec", "AUC-ROC", "Prec"]
-    n_m     = len(metrics)
-    angles  = [n / n_m * 2 * np.pi for n in range(n_m)]
-    angles += angles[:1]
-
-    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw={"polar": True})
-    ax.set_theta_offset(np.pi / 2)
-    ax.set_theta_direction(-1)
-    ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(labels, fontsize=11)
-    ax.set_ylim(0.7, 1.0)
-
-    for i, r in enumerate(valid):
-        vals  = [r.get(m, 0.0) for m in metrics]
-        vals += vals[:1]
-        ax.plot(angles, vals, linewidth=2, color=COLORS[i % len(COLORS)],
-                label=r["name"])
-        ax.fill(angles, vals, alpha=0.08, color=COLORS[i % len(COLORS)])
-
-    ax.legend(loc="upper right", bbox_to_anchor=(1.3, 1.1), fontsize=9)
-    ax.set_title(f"Radar — axis: {axis_name}", fontsize=13, pad=20)
-    plt.tight_layout()
-    _savefig(fig, out_dir / f"{axis_name}_radar.png")
-
-
-def plot_summary_heatmap(all_results: dict, out_dir: Path):
-    """Heatmap of best Dice per axis / config."""
-    rows, cols, vals = [], [], []
-    for axis, results in all_results.items():
-        for r in results:
-            if r and "dice" in r:
-                rows.append(axis)
-                cols.append(r["name"])
-                vals.append(r.get("dice", 0.0))
-
-    if not rows:
-        return
-
-    axes_list = list(dict.fromkeys(rows))
-    all_names = list(dict.fromkeys(cols))
-    matrix    = np.full((len(axes_list), len(all_names)), np.nan)
-    for ax, nm, v in zip(rows, cols, vals):
-        i = axes_list.index(ax)
-        j = all_names.index(nm)
-        matrix[i, j] = v
-
-    fig, ax = plt.subplots(figsize=(max(12, len(all_names)), len(axes_list) + 1))
-    import seaborn as sns
-    sns.heatmap(matrix, annot=True, fmt=".4f", cmap="YlGn",
-                xticklabels=all_names, yticklabels=axes_list,
-                ax=ax, linewidths=0.3, cbar_kws={"label": "Dice"})
-    ax.set_title("Dice scores across all hyperparameter axes", fontsize=13)
-    plt.xticks(rotation=35, ha="right", fontsize=8)
-    plt.yticks(fontsize=9)
-    plt.tight_layout()
-    _savefig(fig, out_dir / "hparam_summary_heatmap.png")
-    logger.info("Summary heatmap saved.")
-
-
-# ─────────────────────────── Main driver ──────────────────────────────────────
-
-def run_axis(axis_name: str,
-             device: torch.device,
-             out_dir: Path,
-             experiment: str = "original") -> list[dict]:
-    """Run all configs for one axis and generate plots."""
-    configs = SEARCH_GRID[axis_name]
+def run_axis(axis: str, epochs: int, fold: int, seed: int):
+    configs = HPARAM_AXES[axis]
     results = []
-
-    logger.info(f"\n{'='*60}")
-    logger.info(f"AXIS: {axis_name}  ({len(configs)} configs)")
-    logger.info(f"{'='*60}")
-
     for cfg in configs:
-        run_name = cfg["name"]
-        result   = run_one_config(cfg, run_name, device, experiment)
-        results.append(result)
+        s = _run_one_config(axis, cfg, epochs, fold, seed)
+        if s:
+            s["name"] = cfg["name"]
+            s["overrides"] = {k: v for k, v in cfg.items() if k != "name"}
+            results.append(s)
 
-        # Save intermediate JSON
-        ensure_dirs(out_dir)
-        with open(out_dir / f"{axis_name}_results.json", "w") as f:
-            safe = [{k: v for k, v in r.items() if k != "history"}
-                    for r in results if r]
-            json.dump(safe, f, indent=2)
+    out_dir = C.HPARAM_DIR
+    ensure_dirs(out_dir)
+    with open(out_dir / f"{axis}_results.json", "w") as f:
+        json.dump(results, f, indent=2)
+    logger.info(f"Saved {axis}_results.json ({len(results)} configs)")
 
-    # Generate plots
-    plot_axis_curves(results, axis_name, out_dir)
-    plot_axis_bar(results, axis_name, out_dir)
-    plot_radar(results, axis_name, out_dir)
-    logger.info(f"Plots saved for axis: {axis_name}")
+    plot_axis_metrics_bar(axis, results, out_dir)
+    plot_axis_training_curves(axis, results, fold, seed, out_dir)
     return results
 
 
-def run_all(experiment: str = "original"):
-    set_seed(C.SEED)
-    device  = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    out_dir = C.HPARAM_DIR
-    ensure_dirs(out_dir, C.LOG_DIR)
+# ─────────────────────────── Visualisations ──────────────────────────────
 
-    logger.info(f"Device: {device}")
-    logger.info(f"Quick epochs per config: {C.HPARAM_QUICK_EPOCHS}")
+def plot_axis_metrics_bar(axis: str, results: list, out_dir: Path):
+    """6-panel bar chart: Dice / IoU / Sens / Spec / Prec / AUC."""
+    if not results:
+        return
+    names = [r["name"] for r in results]
+    metrics = [
+        ("dice_mean",        "Dice"),
+        ("iou_mean",         "IoU"),
+        ("sensitivity_mean", "Sensitivity"),
+        ("specificity_mean", "Specificity"),
+        ("precision_mean",   "Precision"),
+        ("auc_roc_global",   "AUC-ROC"),
+    ]
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    fig.suptitle(f"Hyperparameter axis: {axis}", fontsize=14, fontweight="bold")
 
-    all_results = {}
-    for axis_name in SEARCH_GRID:
-        results = run_axis(axis_name, device, out_dir, experiment)
-        all_results[axis_name] = results
+    palette = sns.color_palette("Set2", n_colors=len(names))
+    for ax, (key, label) in zip(axes.flat, metrics):
+        vals = [r.get(key, 0.0) for r in results]
+        bars = ax.bar(names, vals, color=palette, edgecolor="black", lw=0.5)
+        for bar, v in zip(bars, vals):
+            ax.text(bar.get_x() + bar.get_width() / 2,
+                    bar.get_height() + 0.005,
+                    f"{v:.4f}", ha="center", fontsize=8)
+        ax.set_ylabel(label)
+        ax.set_title(label)
+        ax.set_ylim(0, max(1.0, max(vals) * 1.10))
+        ax.tick_params(axis="x", rotation=20)
+        ax.grid(True, axis="y", alpha=0.3)
 
-    # Summary heatmap across all axes
-    plot_summary_heatmap(all_results, out_dir)
-
-    # Save full summary
-    summary = {}
-    for axis, results in all_results.items():
-        valid = [r for r in results if r and "dice" in r]
-        if valid:
-            best = max(valid, key=lambda r: r.get("dice", 0))
-            summary[axis] = {
-                "best_config": best["name"],
-                "best_dice":   best.get("dice", 0),
-                "all": [{
-                    "name":        r["name"],
-                    "dice":        r.get("dice", 0),
-                    "sensitivity": r.get("sensitivity", 0),
-                    "auc_roc":     r.get("auc_roc", 0),
-                } for r in valid]
-            }
-
-    with open(out_dir / "hparam_summary.json", "w") as f:
-        json.dump(summary, f, indent=2)
-
-    logger.info("\n=== HYPERPARAMETER SEARCH COMPLETE ===")
-    logger.info(f"Results saved to: {out_dir}")
-    for axis, s in summary.items():
-        logger.info(f"  {axis:20s}: best={s['best_config']}  Dice={s['best_dice']:.4f}")
-
-    return summary
+    plt.tight_layout()
+    fig.savefig(out_dir / f"{axis}_metrics_bar.png",
+                dpi=120, bbox_inches="tight")
+    plt.close(fig)
 
 
-# ─────────────────────────── Entry point ──────────────────────────────────────
+def plot_axis_training_curves(axis: str, results: list, fold: int, seed: int,
+                               out_dir: Path):
+    """Overlay validation Dice training curves for each config."""
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.set_title(f"Training curves — {axis} sweep")
+    ax.set_xlabel("Epoch")
+    ax.set_ylabel("Validation Dice")
+    ax.grid(True, alpha=0.3)
 
-if __name__ == "__main__":
+    palette = sns.color_palette("Set2", n_colors=len(results))
+    for col, r in zip(palette, results):
+        name = r["name"]
+        tag  = f"hparam_{axis}_{name.replace(' ', '_').replace('=','').replace('+','plus')}"
+        sub  = f"fold{fold}_seed{seed}_{tag}"
+        hist_path = C.METRIC_DIR / "original" / sub / "original_history.json"
+        if not hist_path.exists():
+            continue
+        with open(hist_path) as f:
+            h = json.load(f)
+        epochs = list(range(1, len(h.get("val_dice", [])) + 1))
+        ax.plot(epochs, h["val_dice"], label=name, lw=1.5, color=col)
+
+    ax.legend(fontsize=9)
+    plt.tight_layout()
+    fig.savefig(out_dir / f"{axis}_training_curves.png",
+                dpi=120, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_summary_heatmap(out_dir: Path):
+    """Heatmap of Dice across all axes and their configs."""
+    rows = []
+    for axis, configs in HPARAM_AXES.items():
+        results_path = out_dir / f"{axis}_results.json"
+        if not results_path.exists():
+            continue
+        with open(results_path) as f:
+            results = json.load(f)
+        for r in results:
+            rows.append({
+                "axis":   axis,
+                "config": r["name"],
+                "dice":   r.get("dice_mean", 0.0),
+                "auc":    r.get("auc_roc_global", 0.0),
+                "iou":    r.get("iou_mean", 0.0),
+            })
+    if not rows:
+        return
+
+    # Build a matrix: rows=configs (with axis prefix), cols=metrics
+    labels = [f"[{r['axis']}] {r['config']}" for r in rows]
+    matrix = np.array([[r["dice"], r["iou"], r["auc"]] for r in rows])
+
+    fig, ax = plt.subplots(figsize=(8, max(6, len(labels) * 0.32)))
+    sns.heatmap(matrix, annot=True, fmt=".4f",
+                yticklabels=labels, xticklabels=["Dice", "IoU", "AUC-ROC"],
+                cmap="YlGnBu", cbar=True, ax=ax,
+                annot_kws={"size": 9})
+    ax.set_title("Hyperparameter sensitivity — all axes")
+    plt.tight_layout()
+    fig.savefig(out_dir / "hparam_summary_heatmap.png",
+                dpi=120, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_summary_radar(out_dir: Path):
+    """Radar chart of best config per axis (multi-metric view)."""
+    metrics = ["dice_mean", "iou_mean", "sensitivity_mean", "specificity_mean",
+               "precision_mean", "auc_roc_global"]
+    metric_labels = ["Dice", "IoU", "Sens", "Spec", "Prec", "AUC"]
+
+    bests = {}
+    for axis, _ in HPARAM_AXES.items():
+        results_path = out_dir / f"{axis}_results.json"
+        if not results_path.exists():
+            continue
+        with open(results_path) as f:
+            results = json.load(f)
+        if not results:
+            continue
+        best = max(results, key=lambda r: r.get("dice_mean", 0))
+        bests[axis] = best
+
+    if not bests:
+        return
+
+    angles = np.linspace(0, 2 * np.pi, len(metrics), endpoint=False).tolist()
+    angles += angles[:1]
+
+    fig, ax = plt.subplots(figsize=(9, 9), subplot_kw={"projection": "polar"})
+    palette = sns.color_palette("Set2", n_colors=len(bests))
+
+    for col, (axis, best) in zip(palette, bests.items()):
+        vals = [best.get(m, 0.0) for m in metrics]
+        vals += vals[:1]
+        ax.plot(angles, vals, lw=2, label=f"{axis}: {best['name']}", color=col)
+        ax.fill(angles, vals, alpha=0.10, color=col)
+
+    ax.set_xticks(angles[:-1])
+    ax.set_xticklabels(metric_labels)
+    ax.set_ylim(0.5, 1.0)
+    ax.set_title("Best config per axis — multi-metric comparison",
+                 y=1.10, fontweight="bold")
+    ax.legend(loc="upper right", bbox_to_anchor=(1.40, 1.05), fontsize=9)
+    plt.tight_layout()
+    fig.savefig(out_dir / "hparam_radar.png", dpi=120, bbox_inches="tight")
+    plt.close(fig)
+
+
+# ─────────────────────────── Entry point ─────────────────────────────────
+
+def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--axis", default="all",
-                   choices=["all"] + list(SEARCH_GRID.keys()))
-    p.add_argument("--experiment", default="original",
-                   choices=["original", "msca", "deva"])
-    p.add_argument("--plot_only", action="store_true",
-                   help="Reload saved results and regenerate plots only")
+    p.add_argument("--axes", nargs="*", default=None,
+                   help="Subset of axes to run (default: all 7)")
+    p.add_argument("--epochs", type=int, default=C.HPARAM_FULL_EPOCHS)
+    p.add_argument("--fold",   type=int, default=0)
+    p.add_argument("--seed",   type=int, default=42)
     args = p.parse_args()
 
-    if args.plot_only:
-        # Reload all saved JSONs and replot
-        out_dir = C.HPARAM_DIR
-        all_results = {}
-        for axis_name in SEARCH_GRID:
-            path = out_dir / f"{axis_name}_results.json"
-            if path.exists():
-                with open(path) as f:
-                    results = json.load(f)
-                all_results[axis_name] = results
-                plot_axis_bar(results, axis_name, out_dir)
-                plot_radar(results, axis_name, out_dir)
-        plot_summary_heatmap(all_results, out_dir)
-        print("Plots regenerated.")
+    axes = args.axes or list(HPARAM_AXES.keys())
+    out_dir = C.HPARAM_DIR
+    ensure_dirs(out_dir)
 
-    elif args.axis == "all":
-        run_all(args.experiment)
+    t0 = time.time()
+    for axis in axes:
+        logger.info(f"\n=== AXIS: {axis} ===")
+        run_axis(axis, args.epochs, args.fold, args.seed)
+        logger.info(f"  Elapsed total: {(time.time()-t0)/3600:.2f} h")
 
-    else:
-        device  = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        out_dir = C.HPARAM_DIR
-        ensure_dirs(out_dir, C.LOG_DIR)
-        set_seed(C.SEED)
-        run_axis(args.axis, device, out_dir, args.experiment)
+    plot_summary_heatmap(out_dir)
+    plot_summary_radar(out_dir)
+    logger.info(f"\nAll done. Outputs in {out_dir}/")
+
+
+if __name__ == "__main__":
+    main()

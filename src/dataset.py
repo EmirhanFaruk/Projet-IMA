@@ -1,6 +1,9 @@
 """
 dataset.py — DRIVE patch dataset with configurable augmentation levels
-and preprocessing options (CLAHE on/off, clip limit).
+and preprocessing options.
+
+Uses cv_splits.get_split() to retrieve train/val/test IDs based on the active
+fold (C.FOLD), seed (C.SEED), and N_FOLDS configuration.
 """
 
 from pathlib import Path
@@ -10,19 +13,19 @@ from torch.utils.data import Dataset
 import albumentations as A
 
 import config as C
+from cv_splits import get_split
 from utils import get_logger
 
 logger = get_logger("dataset")
 
-# Module-level variable so hparam_search can patch it without reimporting
+# Module-level override for hparam search
 _CURRENT_AUG_LEVEL = None
 
 
-# ─────────────────────────── Augmentation pipelines ───────────────────────────
+# ─────────────────────────── Augmentation pipelines ──────────────────────
 
-def get_train_transform(aug_level: str = None):
+def get_train_transform(aug_level=None):
     level = aug_level or _CURRENT_AUG_LEVEL or C.AUG_LEVEL
-
     common = {"additional_targets": {"mask": "mask", "fov": "mask"}}
 
     if level == "none":
@@ -40,10 +43,8 @@ def get_train_transform(aug_level: str = None):
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
             A.Rotate(limit=20, p=0.5, border_mode=0),
-            A.Affine(
-                translate_percent={"x": (-0.05, 0.05), "y": (-0.05, 0.05)},
-                scale=(0.90, 1.10), rotate=(-15, 15), p=0.5,
-            ),
+            A.Affine(translate_percent={"x": (-0.05, 0.05), "y": (-0.05, 0.05)},
+                     scale=(0.90, 1.10), rotate=(-15, 15), p=0.5),
             A.ElasticTransform(alpha=1, sigma=10, p=0.2),
             A.GridDistortion(num_steps=5, distort_limit=0.2, p=0.2),
             A.RandomBrightnessContrast(0.2, 0.2, p=0.3),
@@ -56,24 +57,24 @@ def get_train_transform(aug_level: str = None):
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
             A.Rotate(limit=30, p=0.6, border_mode=0),
-            A.Affine(
-                translate_percent={"x": (-0.10, 0.10), "y": (-0.10, 0.10)},
-                scale=(0.80, 1.20), rotate=(-20, 20), p=0.6,
-            ),
+            A.Affine(translate_percent={"x": (-0.10, 0.10), "y": (-0.10, 0.10)},
+                     scale=(0.80, 1.20), rotate=(-20, 20), p=0.6),
             A.ElasticTransform(alpha=2, sigma=12, p=0.3),
             A.GridDistortion(num_steps=7, distort_limit=0.3, p=0.3),
             A.RandomBrightnessContrast(0.3, 0.3, p=0.4),
             A.RandomGamma(gamma_limit=(60, 140), p=0.4),
             A.GaussNoise(std_range=(0.0, 0.08), p=0.3),
             A.Sharpen(alpha=(0.1, 0.3), p=0.2),
-            A.CoarseDropout(num_holes_range=(1,4), hole_height_range=(4,8), hole_width_range=(4,8), p=0.15),
+            A.CoarseDropout(num_holes_range=(1, 4),
+                            hole_height_range=(4, 8),
+                            hole_width_range=(4, 8), p=0.15),
         ], **common)
 
     else:
         raise ValueError(f"Unknown aug_level: {level}")
 
 
-# ─────────────────────────── Patch utilities ──────────────────────────────────
+# ─────────────────────────── Patch utilities ─────────────────────────────
 
 def extract_patches(image, mask, fov, patch_size, stride):
     H, W   = image.shape
@@ -85,8 +86,6 @@ def extract_patches(image, mask, fov, patch_size, stride):
                 continue
             r0, r1 = r - half, r + half
             c0, c1 = c - half, c + half
-            if r0 < 0 or r1 > H or c0 < 0 or c1 > W:
-                continue
             patches.append({
                 "img":  image[r0:r1, c0:c1].copy(),
                 "mask": mask[r0:r1, c0:c1].copy(),
@@ -132,7 +131,17 @@ def _crop(image, mask, fov, r, c, half):
     }
 
 
-# ─────────────────────────── Dataset classes ──────────────────────────────────
+# ─────────────────────────── Dataset classes ─────────────────────────────
+
+def _get_active_ids(split):
+    """Resolves train/val/test IDs based on current C.FOLD/C.N_FOLDS/C.SEED."""
+    train_ids, val_ids, test_ids = get_split(
+        fold=getattr(C, "FOLD", 0),
+        n_folds=getattr(C, "N_FOLDS", 5),
+        seed=getattr(C, "SEED", 42),
+    )
+    return {"train": train_ids, "val": val_ids, "test": test_ids}[split]
+
 
 class DRIVEPatchDataset(Dataset):
     def __init__(self, split="train", aug_level=None):
@@ -142,10 +151,11 @@ class DRIVEPatchDataset(Dataset):
         self.patches = []
         self.rng     = np.random.default_rng(C.SEED)
         self._load()
-        logger.info(f"[DRIVEPatchDataset:{split}] {len(self.patches)} patches")
+        logger.info(f"[DRIVEPatchDataset:{split}] {len(self.patches)} patches "
+                    f"(fold={C.FOLD}, seed={C.SEED})")
 
     def _load(self):
-        ids = {"train": C.TRAIN_IDS, "val": C.VAL_IDS, "test": C.TEST_IDS}[self.split]
+        ids = _get_active_ids(self.split)
         for img_id in ids:
             stem  = f"{img_id:02d}_training"
             img_p = C.IMG_DIR  / f"{stem}.npy"
@@ -167,7 +177,8 @@ class DRIVEPatchDataset(Dataset):
                 self.patches.extend(
                     extract_patches(img, mask, fov, ps, stride))
 
-    def __len__(self): return len(self.patches)
+    def __len__(self):
+        return len(self.patches)
 
     def __getitem__(self, idx):
         p   = self.patches[idx]
@@ -176,7 +187,8 @@ class DRIVEPatchDataset(Dataset):
         fov = p["fov"].astype(np.float32)
 
         if self.augment is not None:
-            aug = self.augment(image=img, mask=msk.astype(np.uint8),
+            aug = self.augment(image=img,
+                               mask=msk.astype(np.uint8),
                                fov=fov.astype(np.uint8))
             img = aug["image"].astype(np.float32)
             msk = aug["mask"].astype(np.float32)
@@ -190,9 +202,7 @@ class DRIVEPatchDataset(Dataset):
 class DRIVEFullImageDataset(Dataset):
     def __init__(self, split="test"):
         self.items = []
-        ids = {"test":  C.TEST_IDS,
-               "val":   C.VAL_IDS,
-               "train": C.TRAIN_IDS}.get(split, C.TEST_IDS)
+        ids = _get_active_ids(split)
         for img_id in ids:
             stem  = f"{img_id:02d}_training"
             img_p = C.IMG_DIR  / f"{stem}.npy"
@@ -203,9 +213,11 @@ class DRIVEFullImageDataset(Dataset):
                                    "img":  img_p,
                                    "mask": msk_p,
                                    "fov":  fov_p})
-        logger.info(f"[DRIVEFullImageDataset:{split}] {len(self.items)} images")
+        logger.info(f"[DRIVEFullImageDataset:{split}] {len(self.items)} images "
+                    f"(fold={C.FOLD}, seed={C.SEED})")
 
-    def __len__(self): return len(self.items)
+    def __len__(self):
+        return len(self.items)
 
     def __getitem__(self, idx):
         it  = self.items[idx]

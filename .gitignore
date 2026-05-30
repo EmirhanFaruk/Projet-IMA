@@ -1,0 +1,88 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+*.whl
+build/
+dist/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+research_run.log
+
+# =========================
+# Training outputs
+# =========================
+checkpoints/
+outputs/
+save/
+
+# Model weights / checkpoints
+*.pth
+*.pt
+*.ckpt
+*.onnx
+
+# =========================
+# Datasets / generated data
+# =========================
+data/processed/
+data/cache/
+data/tmp/
+
+# =========================
+# Archives
+# =========================
+*.zip
+*.tar
+*.gz
+*.rar
+*.7z
+
+# =========================
+# Jupyter
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# Coverage / testing
+# =========================
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+
+*.png
+*.pdf
